@@ -6,6 +6,7 @@ by tracking memory usage patterns over time.
 
 import argparse
 import json
+import logging
 import os
 import signal
 import sys
@@ -17,8 +18,15 @@ from pathlib import Path
 try:
     import psutil
 except ImportError:
-    print("Error: psutil library required. Install with: pip install -r requirements.txt")
+    logging.error("psutil library required. Install with: pip install -r requirements.txt")
     sys.exit(1)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 class MemorySnapshot:
@@ -187,15 +195,19 @@ class MemoryLeakTracker:
         leaks = len(self.get_leak_suspects())
 
         elapsed = time.time() - self.start_time if self.start_time else 0
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Tracking {active} processes | "
-              f"Elapsed: {elapsed:.0f}s | Potential leaks: {leaks}")
+        logger.info(
+            "Tracking %d processes | Elapsed: %.0fs | Potential leaks: %d",
+            active, elapsed, leaks
+        )
 
         if verbose and leaks > 0:
-            print("\n--- Leak Suspects ---")
+            logger.info("--- Leak Suspects ---")
             for suspect in self.get_leak_suspects()[:5]:
-                print(f"  PID {suspect['pid']}: {suspect['name']} | "
-                      f"RSS: {suspect['current_rss_mb']:.1f}MB | "
-                      f"Growth: {suspect['growth_rate_mb_per_sec']:.2f}MB/s")
+                logger.info(
+                    "  PID %d: %s | RSS: %.1fMB | Growth: %.2fMB/s",
+                    suspect["pid"], suspect["name"],
+                    suspect["current_rss_mb"], suspect["growth_rate_mb_per_sec"]
+                )
 
     def save_report(self):
         report = {
@@ -227,12 +239,12 @@ class MemoryLeakTracker:
         else:
             self.track_all_processes()
 
-        print(f"Memory Leak Tracker started")
-        print(f"Threshold: {self.threshold_mb}MB | Interval: {self.interval}s")
+        logger.info("Memory Leak Tracker started")
+        logger.info("Threshold: %dMB | Interval: %.1fs", self.threshold_mb, self.interval)
         if duration:
-            print(f"Duration: {duration}s (Ctrl+C to stop early)")
+            logger.info("Duration: %ds (Ctrl+C to stop early)", duration)
         else:
-            print("Running until interrupted (Ctrl+C)")
+            logger.info("Running until interrupted (Ctrl+C)")
 
         iterations = 0
         try:
@@ -249,22 +261,24 @@ class MemoryLeakTracker:
                 time.sleep(self.interval)
 
         except KeyboardInterrupt:
-            print("\nInterrupted by user")
+            logger.info("Interrupted by user")
 
         finally:
             self.running = False
             self.print_status(verbose=True)
             report_path = self.save_report()
-            print(f"\nReport saved to: {report_path}")
+            logger.info("Report saved to: %s", report_path)
 
             suspects = self.get_leak_suspects()
             if suspects:
-                print(f"\n⚠ Found {len(suspects)} potential memory leak(s):")
+                logger.warning("Found %d potential memory leak(s)", len(suspects))
                 for s in suspects[:10]:
-                    print(f"  - PID {s['pid']} ({s['name']}): "
-                          f"{s['growth_rate_mb_per_sec']:.2f}MB/s growth")
+                    logger.warning(
+                        "  - PID %d (%s): %.2fMB/s growth",
+                        s["pid"], s["name"], s["growth_rate_mb_per_sec"]
+                    )
             else:
-                print("\n✓ No obvious memory leaks detected")
+                logger.info("No obvious memory leaks detected")
 
 
 def signal_handler(tracker, signum, frame):
