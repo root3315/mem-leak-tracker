@@ -132,10 +132,11 @@ class ProcessMonitor:
 class MemoryLeakTracker:
     """Main tracker that monitors multiple processes for memory leaks."""
 
-    def __init__(self, output_dir=None, interval=2.0, threshold_mb=50):
+    def __init__(self, output_dir=None, interval=2.0, threshold_mb=50, growth_rate_threshold=0.1):
         self.output_dir = Path(output_dir) if output_dir else Path.cwd()
         self.interval = interval
         self.threshold_mb = threshold_mb
+        self.growth_rate_threshold = growth_rate_threshold
         self.monitors = {}
         self.running = False
         self.start_time = None
@@ -143,7 +144,11 @@ class MemoryLeakTracker:
 
     def track_pid(self, pid):
         if pid not in self.monitors:
-            self.monitors[pid] = ProcessMonitor(pid, threshold_mb=self.threshold_mb)
+            self.monitors[pid] = ProcessMonitor(
+                pid,
+                threshold_mb=self.threshold_mb,
+                growth_rate_threshold=self.growth_rate_threshold,
+            )
         return self.monitors[pid]
 
     def track_all_processes(self):
@@ -184,7 +189,10 @@ class MemoryLeakTracker:
         suspects = []
         for pid, monitor in self.monitors.items():
             summary = monitor.get_summary()
-            if summary and (summary["leak_detected"] or summary["growth_rate_mb_per_sec"] > 0.5):
+            if summary and (
+                summary["leak_detected"]
+                or summary["growth_rate_mb_per_sec"] > self.growth_rate_threshold
+            ):
                 suspects.append(summary)
 
         suspects.sort(key=lambda x: x["growth_rate_mb_per_sec"], reverse=True)
@@ -215,6 +223,7 @@ class MemoryLeakTracker:
             "end_time": datetime.now().isoformat(),
             "duration_seconds": time.time() - self.start_time if self.start_time else 0,
             "threshold_mb": self.threshold_mb,
+            "growth_rate_threshold_mb_per_sec": self.growth_rate_threshold,
             "interval_seconds": self.interval,
             "suspects": self.get_leak_suspects(),
             "all_processes": [
@@ -240,7 +249,10 @@ class MemoryLeakTracker:
             self.track_all_processes()
 
         logger.info("Memory Leak Tracker started")
-        logger.info("Threshold: %dMB | Interval: %.1fs", self.threshold_mb, self.interval)
+        logger.info(
+            "Threshold: %dMB | Growth rate threshold: %.2fMB/s | Interval: %.1fs",
+            self.threshold_mb, self.growth_rate_threshold, self.interval,
+        )
         if duration:
             logger.info("Duration: %ds (Ctrl+C to stop early)", duration)
         else:
@@ -313,6 +325,12 @@ def main():
         help="Memory growth threshold in MB to flag as leak (default: 50)"
     )
     parser.add_argument(
+        "-r", "--growth-rate",
+        type=float,
+        default=0.1,
+        help="Growth rate threshold in MB/s to flag as leak (default: 0.1)"
+    )
+    parser.add_argument(
         "-o", "--output",
         type=str,
         help="Output directory for reports (default: current directory)"
@@ -329,6 +347,7 @@ def main():
         output_dir=args.output,
         interval=args.interval,
         threshold_mb=args.threshold,
+        growth_rate_threshold=args.growth_rate,
     )
 
     signal.signal(signal.SIGINT, lambda s, f: signal_handler(tracker, s, f))
