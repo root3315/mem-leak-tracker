@@ -39,6 +39,9 @@ python mem_leak_tracker.py -d 300
 # Flag processes growing more than 20MB
 python mem_leak_tracker.py -t 20
 
+# Flag processes growing faster than 0.5 MB/s
+python mem_leak_tracker.py -r 0.5
+
 # Sample every second instead of default 2s
 python mem_leak_tracker.py -i 1.0
 ```
@@ -56,6 +59,7 @@ python mem_leak_tracker.py -v
 | `-d, --duration` | Run time in seconds | Until Ctrl+C |
 | `-i, --interval` | Snapshot interval (seconds) | 2.0 |
 | `-t, --threshold` | Growth threshold in MB | 50 |
+| `-r, --growth-rate` | Growth rate threshold in MB/s | 0.1 |
 | `-o, --output` | Report output directory | Current dir |
 | `-v, --verbose` | Show leak details | Off |
 
@@ -65,7 +69,8 @@ python mem_leak_tracker.py -v
 2. Tracks growth patterns over consecutive snapshots
 3. Flags a process as a "leak suspect" if:
    - Memory grows consistently across 3+ snapshots, AND
-   - Total growth exceeds the threshold (default 50MB)
+   - Total growth exceeds the threshold (default 50MB), OR
+   - Growth rate exceeds the rate threshold (default 0.1 MB/s)
 4. Calculates growth rate in MB/second for ranking
 
 ## Output
